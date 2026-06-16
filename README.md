@@ -1,180 +1,188 @@
-<p align="center">
-  <img alt="LeRobot, Hugging Face Robotics Library" src="./media/readme/lerobot-logo-thumbnail.png" width="100%">
-</p>
+# LeRobot · PiPER / PiPER-X 接入版
 
-<div align="center">
+> 本仓库是 [huggingface/lerobot](https://github.com/huggingface/lerobot) 的二次开发分支，在原版基础上**新增了对 AgileX PiPER 与 PiPER-X 机械臂（单臂 / 双臂）的完整支持**。
+>
+> 原版 LeRobot 的完整说明请见 **[README_LEROBOT.md](./README_LEROBOT.md)**（即上游原始 README）。本文件只描述「我在原版上做了什么」以及如何使用 PiPER。
 
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/latest_deps_tests.yml?query=branch%3Amain)
-[![Tests](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml/badge.svg?branch=main)](https://github.com/huggingface/lerobot/actions/workflows/docker_publish.yml?query=branch%3Amain)
-[![Python versions](https://img.shields.io/pypi/pyversions/lerobot)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/huggingface/lerobot/blob/main/LICENSE)
-[![Status](https://img.shields.io/pypi/status/lerobot)](https://pypi.org/project/lerobot/)
-[![Version](https://img.shields.io/pypi/v/lerobot)](https://pypi.org/project/lerobot/)
-[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-v2.1-ff69b4.svg)](https://github.com/huggingface/lerobot/blob/main/CODE_OF_CONDUCT.md)
-[![Discord](https://img.shields.io/badge/Discord-Join_Us-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/q8Dzzpym3f)
+---
 
-</div>
+## TL;DR — 相对原版多了什么
 
-**LeRobot** aims to provide models, datasets, and tools for real-world robotics in PyTorch. The goal is to lower the barrier to entry so that everyone can contribute to and benefit from shared datasets and pretrained models.
+- **4 个机器人类型**：`piper_follower`、`piperx_follower`、`bi_piper_follower`、`bi_piperx_follower`（通过 CAN 总线控制）。
+- **4 个遥操作类型**：`piper_leader`、`piperx_leader`、`bi_piper_leader`、`bi_piperx_leader`，含**重力补偿（gravity compensation）**手动牵引示教。
+- **PiPER SDK 封装**：[src/lerobot/utils/piper_sdk.py](src/lerobot/utils/piper_sdk.py)，统一关节名 / 动作键 / 单位换算。
+- **打通主流程**：teleoperate / record / replay / rollout / calibrate 五个脚本都已接入 PiPER。
+- **异步推理支持**：把 PiPER 加进 `SUPPORTED_ROBOTS`。
+- **新增依赖 extra**：`lerobot[piper]`（`piper_sdk`、`can-dep`）。
+- **机械臂模型资产**：`piper_description` / `piper_x_description` 的 URDF + 网格（用于重力补偿，Git LFS 存储）。
+- **环境文件**：[environment.yml](environment.yml)（conda 环境 `lerobot-piperx`，Python 3.12）。
+- **命令速查**：[PIPERX_COMMANDS.md](PIPERX_COMMANDS.md)。
+- **注册测试**：[tests/test_piperx_registration.py](tests/test_piperx_registration.py)。
 
-🤗 A hardware-agnostic, Python-native interface that standardizes control across diverse platforms, from low-cost arms (SO-100) to humanoids.
+---
 
-🤗 A standardized, scalable LeRobotDataset format (Parquet + MP4 or images) hosted on the Hugging Face Hub, enabling efficient storage, streaming and visualization of massive robotic datasets.
+## 新增的设备类型
 
-🤗 State-of-the-art policies that have been shown to transfer to the real-world ready for training and deployment.
+| 类别 | 类型名（`--robot.type` / `--teleop.type`） | 实现类 | 说明 |
+| --- | --- | --- | --- |
+| 机器人 | `piper_follower` | `PiperFollower` | 单臂 PiPER 从臂 |
+| 机器人 | `piperx_follower` | `PiperXFollower` | 单臂 PiPER-X 从臂 |
+| 机器人 | `bi_piper_follower` | `BiPiperFollower` | 双臂 PiPER 从臂 |
+| 机器人 | `bi_piperx_follower` | `BiPiperXFollower` | 双臂 PiPER-X 从臂 |
+| 遥操作 | `piper_leader` | `PiperLeader` | 单臂 PiPER 主臂 |
+| 遥操作 | `piperx_leader` | `PiperXLeader` | 单臂 PiPER-X 主臂 |
+| 遥操作 | `bi_piper_leader` | `BiPiperLeader` | 双臂 PiPER 主臂 |
+| 遥操作 | `bi_piperx_leader` | `BiPiperXLeader` | 双臂 PiPER-X 主臂 |
 
-🤗 Comprehensive support for the open-source ecosystem to democratize physical AI.
+> PiPER 与 PiPER-X 共享同一套逻辑，主要差别在重力补偿系数（`gravity_comp_tx_ratio`，见下文）和绑定的 URDF。
 
-## Quick Start
+---
 
-LeRobot can be installed directly from PyPI.
+## 安装
 
-```bash
-pip install lerobot
-lerobot-info
-```
+### 1) 克隆并拉取 LFS 资产
 
-> [!IMPORTANT]
-> For detailed installation guide, please see the [Installation Documentation](https://huggingface.co/docs/lerobot/installation).
-
-## Robots & Control
-
-<div align="center">
-  <img src="./media/readme/robots_control_video.webp" width="640px" alt="Reachy 2 Demo">
-</div>
-
-LeRobot provides a unified `Robot` class interface that decouples control logic from hardware specifics. It supports a wide range of robots and teleoperation devices.
-
-```python
-from lerobot.robots.myrobot import MyRobot
-
-# Connect to a robot
-robot = MyRobot(config=...)
-robot.connect()
-
-# Read observation and send action
-obs = robot.get_observation()
-action = model.select_action(obs)
-robot.send_action(action)
-```
-
-**Supported Hardware:** SO100, LeKiwi, Koch, HopeJR, OMX, EarthRover, Reachy2, Gamepads, Keyboards, Phones, OpenARM, Unitree G1, reBot B601.
-
-While these devices are natively integrated into the LeRobot codebase, the library is designed to be extensible. You can easily implement the Robot interface to utilize LeRobot's data collection, training, and visualization tools for your own custom robot.
-
-For detailed hardware setup guides, see the [Hardware Documentation](https://huggingface.co/docs/lerobot/integrate_hardware).
-
-## LeRobot Dataset
-
-To solve the data fragmentation problem in robotics, we utilize the **LeRobotDataset** format.
-
-- **Structure:** Synchronized MP4 videos (or images) for vision and Parquet files for state/action data.
-- **HF Hub Integration:** Explore thousands of robotics datasets on the [Hugging Face Hub](https://huggingface.co/lerobot).
-- **Tools:** Seamlessly delete episodes, split by indices/fractions, add/remove features, and merge multiple datasets.
-
-```python
-from lerobot.datasets.lerobot_dataset import LeRobotDataset
-
-# Load a dataset from the Hub
-dataset = LeRobotDataset("lerobot/aloha_mobile_cabinet")
-
-# Access data (automatically handles video decoding)
-episode_index=0
-print(f"{dataset[episode_index]['action'].shape=}\n")
-```
-
-Learn more about it in the [LeRobotDataset Documentation](https://huggingface.co/docs/lerobot/lerobot-dataset-v3)
-
-## SoTA Models
-
-LeRobot implements state-of-the-art policies in pure PyTorch, covering Imitation Learning, Reinforcement Learning, and Vision-Language-Action (VLA) models, with more coming soon. It also provides you with the tools to instrument and inspect your training process.
-
-<p align="center">
-  <img alt="Gr00t Architecture" src="./media/readme/VLA_architecture.jpg" width="640px">
-</p>
-
-Training a policy is as simple as running a script configuration:
+机械臂网格/URDF 以 **Git LFS** 形式存放，克隆后需要单独拉取：
 
 ```bash
-lerobot-train \
-  --policy=act \
-  --dataset.repo_id=lerobot/aloha_mobile_cabinet
+git clone git@github.com:heliang-pu/lerobot-piperx.git
+cd lerobot-piperx
+git lfs install
+# 仅拉取 PiPER 资产（也可直接 git lfs pull 拉全部）
+git lfs pull --include="src/lerobot/assets/piper_description/**,src/lerobot/assets/piper_x_description/**" --exclude="*"
+git lfs checkout src/lerobot/assets/piper_description src/lerobot/assets/piper_x_description
 ```
 
-| Category                   | Models                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Imitation Learning**     | [ACT](./docs/source/policy_act_README.md), [Diffusion](./docs/source/policy_diffusion_README.md), [VQ-BeT](./docs/source/policy_vqbet_README.md), [Multitask DiT Policy](./docs/source/policy_multi_task_dit_README.md)                                                                                                                                    |
-| **Reinforcement Learning** | [HIL-SERL](./docs/source/hilserl.mdx), [TDMPC](./docs/source/policy_tdmpc_README.md) & QC-FQL (coming soon)                                                                                                                                                                                                                                                |
-| **VLAs Models**            | [Pi0](./docs/source/pi0.mdx), [Pi0Fast](./docs/source/pi0fast.mdx), [Pi0.5](./docs/source/pi05.mdx), [GR00T N1.5](./docs/source/policy_groot_README.md), [SmolVLA](./docs/source/policy_smolvla_README.md), [XVLA](./docs/source/xvla.mdx), [EO-1](./docs/source/eo1.mdx), [MolmoAct2](./docs/source/molmoact2.mdx), [WALL-OSS](./docs/source/walloss.mdx) |
-| **World Models**           | [VLA-JEPA](./docs/source/vla_jepa.mdx) (more coming soon)                                                                                                                                                                                                                                                                                                  |
-| **Reward Models**          | [SARM](./docs/source/sarm.mdx), [TOPReward](./docs/source/topreward.mdx), [Robometer](./docs/source/robometer.mdx)                                                                                                                                                                                                                                         |
+> ⚠️ **重要**：本仓库 push 时，这些网格的 LFS 二进制对象在源机器上缺失（仅有指针），因此远端 LFS 里**暂时没有实际网格数据**。需要从原始资产来源补齐后再 `git lfs push`。在补齐之前，PiPER（非 X）的重力补偿会因 URDF 仍是 LFS 指针而报明确错误；纯收发数据 / 录制不受影响。
 
-Similarly to the hardware, you can easily implement your own policy & leverage LeRobot's data collection, training, and visualization tools, and share your model to the HF Hub
-
-For detailed policy setup guides, see the [Policy Documentation](https://huggingface.co/docs/lerobot/bring_your_own_policies). For GPU/RAM requirements and expected training time per policy, see the [Compute Hardware Guide](https://huggingface.co/docs/lerobot/hardware_guide).
-
-## Inference & Evaluation
-
-Evaluate your policies in simulation or on real hardware using the unified evaluation script. LeRobot supports standard benchmarks like **LIBERO**, **MetaWorld** and more to come.
+### 2) 用 conda 环境复现（推荐）
 
 ```bash
-# Evaluate a policy on the LIBERO benchmark
-lerobot-eval \
-  --policy.path=lerobot/pi0_libero_finetuned \
-  --env.type=libero \
-  --env.task=libero_object \
-  --eval.n_episodes=10
+conda env create -f environment.yml      # 创建名为 lerobot-piperx 的环境（Python 3.12）
+conda activate lerobot-piperx
 ```
 
-Learn how to implement your own simulation environment or benchmark and distribute it from the HF Hub by following the [EnvHub Documentation](https://huggingface.co/docs/lerobot/envhub)
+### 3) 或用 pip extra 安装 PiPER 依赖
 
-## Resources
-
-- **[Documentation](https://huggingface.co/docs/lerobot/index):** The complete guide to tutorials & API.
-- **[Chinese Tutorials: LeRobot+SO-ARM101中文教程-同济子豪兄](https://zihao-ai.feishu.cn/wiki/space/7589642043471924447)** Detailed doc for assembling, teleoperate, dataset, train, deploy. Verified by Seed Studio and 5 global hackathon players.
-- **[Discord](https://discord.gg/q8Dzzpym3f):** Join the `LeRobot` server to discuss with the community.
-- **[X](https://x.com/LeRobotHF):** Follow us on X to stay up-to-date with the latest developments.
-- **[Robot Learning Tutorial](https://huggingface.co/spaces/lerobot/robot-learning-tutorial):** A free, hands-on course to learn robot learning using LeRobot.
-- **[T-Shirt Folding Experiment](https://huggingface.co/spaces/lerobot/robot-folding):** An end-to-end demonstration of folding t-shirts with LeRobot.
-
-## Citation
-
-If you use LeRobot in your project, please cite the GitHub repository to acknowledge the ongoing development and contributors:
-
-```bibtex
-@misc{cadene2024lerobot,
-    author = {Cadene, Remi and Alibert, Simon and Soare, Alexander and Gallouedec, Quentin and Zouitine, Adil and Palma, Steven and Kooijmans, Pepijn and Aractingi, Michel and Shukor, Mustafa and Aubakirova, Dana and Russi, Martino and Capuano, Francesco and Pascal, Caroline and Choghari, Jade and Meftah, Khalil and Ellerbach, Maxime and Moss, Jess and Wolf, Thomas},
-    title = {LeRobot: State-of-the-art Machine Learning for Real-World Robotics in Pytorch},
-    howpublished = "\url{https://github.com/huggingface/lerobot}",
-    year = {2024}
-}
+```bash
+pip install -e ".[piper]"                 # 安装 piper_sdk + python-can 等
 ```
 
-If you are referencing our research or the academic paper, please also cite our ICLR publication:
+---
 
-<details>
-<summary><b>ICLR 2026 Paper</b></summary>
+## CAN 总线准备
 
-```bibtex
-@inproceedings{cadenelerobot,
-  title={LeRobot: An Open-Source Library for End-to-End Robot Learning},
-  author={Cadene, Remi and Alibert, Simon and Capuano, Francesco and Aractingi, Michel and Zouitine, Adil and Kooijmans, Pepijn and Choghari, Jade and Russi, Martino and Pascal, Caroline and Palma, Steven and Shukor, Mustafa and Moss, Jess and Soare, Alexander and Aubakirova, Dana and Lhoest, Quentin and Gallou\'edec, Quentin and Wolf, Thomas},
-  booktitle={The Fourteenth International Conference on Learning Representations},
-  year={2026},
-  url={https://arxiv.org/abs/2602.22818}
-}
+PiPER 通过 CAN 通信，命令里的 `--robot.port` / `--teleop.port` 填的是 **CAN 接口名**（例如 `can0`，或重命名后的 `can_follower` / `can_leader` / `can_left_follower` 等）。使用前请先把对应 CAN 接口拉起来，例如：
+
+```bash
+sudo ip link set can0 up type can bitrate 1000000
 ```
 
-</details>
+双臂场景需要为左右臂各自准备一个 CAN 接口。
 
-## Contribute
+---
 
-We welcome contributions from everyone in the community! To get started, please read our [CONTRIBUTING.md](https://github.com/huggingface/lerobot/blob/main/CONTRIBUTING.md) guide. Whether you're adding a new feature, improving documentation, or fixing a bug, your help and feedback are invaluable. We're incredibly excited about the future of open-source robotics and can't wait to work with you on what's next—thank you for your support!
+## 快速开始
 
-<p align="center">
-  <img alt="SO101 Video" src="./media/readme/so100_video.webp" width="640px">
-</p>
+完整命令见 **[PIPERX_COMMANDS.md](PIPERX_COMMANDS.md)**（含录制带相机、replay、rollout、双臂等）。最小遥操作示例：
 
-<div align="center">
-<sub>Built by the <a href="https://huggingface.co/lerobot">LeRobot</a> team at <a href="https://huggingface.co">Hugging Face</a> with ❤️</sub>
-</div>
+```bash
+python -m lerobot.scripts.lerobot_teleoperate \
+  --robot.type=piperx_follower \
+  --robot.port=can_follower \
+  --robot.id=my_piperx_follower \
+  --robot.require_calibration=false \
+  --robot.speed_ratio=20 \
+  --teleop.type=piperx_leader \
+  --teleop.port=can_leader \
+  --teleop.id=my_piperx_leader \
+  --teleop.require_calibration=false \
+  --teleop.manual_control=false \
+  --teleop.allow_missing_ctrl_mode_on_connect=true \
+  --teleop.first_action_timeout_s=60
+```
+
+---
+
+## 关键配置项
+
+### 从臂（follower）— [config_piper_follower.py](src/lerobot/robots/piper_follower/config_piper_follower.py)
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `port` | （必填） | CAN 接口名 |
+| `speed_ratio` | `100` | 跟随速度比例（0–100），手动牵引/调试时建议调小，如 `20` |
+| `require_calibration` | `true` | 无标定文件时是否强制标定，可设 `false` 跳过 |
+| `high_follow` | `true` | 高跟随模式 |
+| `sync_gripper` | `true` | 是否同步夹爪 |
+| `enable_on_connect` | `true` | 连接时自动使能 |
+| `cameras` | `{}` | 录制时配置相机（见 PIPERX_COMMANDS.md） |
+| `disable_on_disconnect` | `false` | 断开时是否下电 |
+
+### 主臂 / 遥操作（leader）— [config_piper_leader.py](src/lerobot/teleoperators/piper_leader/config_piper_leader.py)
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `port` | （必填） | CAN 接口名 |
+| `manual_control` | `true` | 手动牵引示教模式（启用重力补偿） |
+| `allow_missing_ctrl_mode_on_connect` | `false` | 部分硬件仅在运动时才发 CAN 帧，置 `true` 容忍连接时缺失 |
+| `first_action_timeout_s` | `30.0` | 首个动作等待超时 |
+| `prefer_ctrl_messages` / `fallback_to_feedback` | `true` / `true` | 优先读控制帧，缺失则回退反馈状态 |
+| `gravity_comp_*` | 见下 | 重力补偿参数（仅 `manual_control=true` 时生效） |
+| `require_calibration` | `true` | 同上 |
+
+### 重力补偿（gravity compensation）
+
+实现见 [gravity_compensation.py](src/lerobot/teleoperators/piper_leader/gravity_compensation.py)，依赖对应 URDF：
+
+- PiPER：`assets/piper_description/urdf/piper_no_gripper_description.urdf`
+- PiPER-X：`assets/piper_x_description/urdf/piper_x_description_no_gripper.urdf`
+
+关键参数：`gravity_comp_control_hz`（默认 200Hz）、`gravity_comp_torque_limit`（默认 8.0）、`gravity_comp_tx_ratio`（PiPER 默认 `0.2×6`，PiPER-X 默认 `1.0×6`）、`gravity_comp_base_rpy_deg`（底座姿态修正）。
+
+---
+
+## 相对原版改动一览
+
+### 修改的上游文件
+
+| 文件 | 改动 |
+| --- | --- |
+| [pyproject.toml](pyproject.toml) | 新增 `lerobot[piper]` extra（`piper_sdk`、`can-dep`）；`hardware` extra 引入 piper；`package-data` 打包 piper 资产 |
+| [robots/utils.py](src/lerobot/robots/utils.py) | `make_robot_from_config` 注册 4 个 piper follower |
+| [teleoperators/utils.py](src/lerobot/teleoperators/utils.py) | `make_teleoperator_from_config` 注册 4 个 piper leader |
+| [utils/import_utils.py](src/lerobot/utils/import_utils.py) | 第三方插件加载：用内置实现替代 `lerobot_robot_piper`，并优雅跳过重复注册 |
+| [async_inference/constants.py](src/lerobot/async_inference/constants.py) | `SUPPORTED_ROBOTS` 增加 4 个 piper 类型 |
+| [async_inference/robot_client.py](src/lerobot/async_inference/robot_client.py) | 导入 piper 模块以触发注册 |
+| [common/control_utils.py](src/lerobot/common/control_utils.py) | `policies` 改为延迟导入，避免可选依赖下的导入问题 |
+| scripts: [calibrate](src/lerobot/scripts/lerobot_calibrate.py) / [record](src/lerobot/scripts/lerobot_record.py) / [replay](src/lerobot/scripts/lerobot_replay.py) / [rollout](src/lerobot/scripts/lerobot_rollout.py) / [teleoperate](src/lerobot/scripts/lerobot_teleoperate.py) | 导入 piper 模块以注册类型 |
+
+### 新增文件
+
+| 路径 | 内容 |
+| --- | --- |
+| [robots/piper_follower/](src/lerobot/robots/piper_follower/) | `PiperFollower` / `PiperXFollower` 及配置 |
+| [robots/bi_piper_follower/](src/lerobot/robots/bi_piper_follower/) | `BiPiperFollower` / `BiPiperXFollower` 及配置 |
+| [teleoperators/piper_leader/](src/lerobot/teleoperators/piper_leader/) | `PiperLeader` / `PiperXLeader`、配置、重力补偿 |
+| [teleoperators/bi_piper_leader/](src/lerobot/teleoperators/bi_piper_leader/) | `BiPiperLeader` / `BiPiperXLeader` 及配置 |
+| [utils/piper_sdk.py](src/lerobot/utils/piper_sdk.py) | PiPER SDK 封装、关节名 / 动作键 / 单位换算 |
+| [assets/piper_description/](src/lerobot/assets/piper_description/) · [assets/piper_x_description/](src/lerobot/assets/piper_x_description/) | URDF + 网格（Git LFS） |
+| [PIPERX_COMMANDS.md](PIPERX_COMMANDS.md) | 命令速查 |
+| [environment.yml](environment.yml) | conda 环境定义 |
+| [tests/test_piperx_registration.py](tests/test_piperx_registration.py) | 类型注册与第三方插件冲突测试 |
+
+---
+
+## 测试
+
+```bash
+pytest tests/test_piperx_registration.py -v
+```
+
+覆盖：单臂 / 双臂 PiPER-X 的类型注册与工厂构造、第三方 `lerobot_robot_piper` 插件与内置实现的冲突处理。
+
+---
+
+## 致谢与许可
+
+基于 [huggingface/lerobot](https://github.com/huggingface/lerobot)，遵循上游 Apache-2.0 许可。PiPER 相关硬件接口基于 AgileX `piper_sdk`。原版完整文档见 [README_LEROBOT.md](./README_LEROBOT.md)。
