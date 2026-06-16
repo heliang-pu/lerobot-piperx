@@ -83,6 +83,22 @@ def make_teleoperator_from_config(config: TeleoperatorConfig) -> "Teleoperator":
         from .bi_so_leader import BiSOLeader
 
         return BiSOLeader(config)
+    elif config.type == "piper_leader":
+        from .piper_leader import PiperLeader
+
+        return PiperLeader(config)
+    elif config.type == "piperx_leader":
+        from .piper_leader import PiperXLeader
+
+        return PiperXLeader(config)
+    elif config.type == "bi_piper_leader":
+        from .bi_piper_leader import BiPiperLeader
+
+        return BiPiperLeader(config)
+    elif config.type == "bi_piperx_leader":
+        from .bi_piper_leader import BiPiperXLeader
+
+        return BiPiperXLeader(config)
     elif config.type == "reachy2_teleoperator":
         from .reachy2_teleoperator import Reachy2Teleoperator
 

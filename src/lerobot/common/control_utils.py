@@ -28,7 +28,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import torch
 
-from lerobot.policies import PreTrainedPolicy, prepare_observation_for_inference
 from lerobot.utils.import_utils import _deepdiff_available, require_package
 
 if TYPE_CHECKING or _deepdiff_available:
@@ -38,6 +37,7 @@ else:
 
 if TYPE_CHECKING:
     from lerobot.datasets import LeRobotDataset
+    from lerobot.policies import PreTrainedPolicy
 from lerobot.processor import PolicyProcessorPipeline
 from lerobot.robots import Robot
 from lerobot.types import PolicyAction
@@ -104,6 +104,8 @@ def predict_action(
     Returns:
         A `torch.Tensor` containing the predicted action, ready for the robot.
     """
+    from lerobot.policies import prepare_observation_for_inference
+
     observation = copy(observation)
     with (
         torch.inference_mode(),

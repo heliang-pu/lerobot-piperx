@@ -219,14 +219,28 @@ def register_third_party_plugins() -> None:
     'lerobot_teleoperator_', or 'lerobot_policy_' and imports them.
     """
     prefixes = ("lerobot_robot_", "lerobot_camera_", "lerobot_teleoperator_", "lerobot_policy_")
+    built_in_replacements = {"lerobot_robot_piper"}
     imported: list[str] = []
     failed: list[str] = []
+    skipped: list[str] = []
 
     def attempt_import(module_name: str):
         try:
             importlib.import_module(module_name)
             imported.append(module_name)
             logging.info("Imported third-party plugin: %s", module_name)
+        except ValueError as e:
+            message = str(e)
+            if "Cannot register" in message and "already registered" in message:
+                failed.append(module_name)
+                logging.debug(
+                    "Skipped third-party plugin with duplicate registration: %s (%s)",
+                    module_name,
+                    message,
+                )
+                return
+            logging.exception("Could not import third-party plugin: %s", module_name)
+            failed.append(module_name)
         except Exception:
             logging.exception("Could not import third-party plugin: %s", module_name)
             failed.append(module_name)
@@ -236,6 +250,15 @@ def register_third_party_plugins() -> None:
         if not dist_name:
             continue
         if dist_name.startswith(prefixes):
+            if dist_name in built_in_replacements:
+                skipped.append(dist_name)
+                logging.debug("Skipped third-party plugin replaced by built-in support: %s", dist_name)
+                continue
             attempt_import(dist_name)
 
-    logging.debug("Third-party plugin import summary: imported=%s failed=%s", imported, failed)
+    logging.debug(
+        "Third-party plugin import summary: imported=%s failed=%s skipped=%s",
+        imported,
+        failed,
+        skipped,
+    )

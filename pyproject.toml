@@ -122,6 +122,7 @@ hardware = [
     "lerobot[pynput-dep]",
     "lerobot[pyserial-dep]",
     "lerobot[deepdiff-dep]",
+    "lerobot[piper]",
 ]
 viz = [
     "rerun-sdk>=0.24.0,<0.27.0",
@@ -165,6 +166,7 @@ robstride = ["lerobot[can-dep]"]
 
 # Robots
 openarms = ["lerobot[damiao]"]
+piper = ["piper_sdk>=0.6.1,<0.7.0", "lerobot[can-dep]"]
 gamepad = ["lerobot[pygame-dep]", "hidapi>=0.14.0,<0.15.0"]
 hopejr = ["lerobot[feetech]", "lerobot[pygame-dep]"]
 lekiwi = ["lerobot[feetech]", "lerobot[pyzmq-dep]"]
@@ -357,7 +359,12 @@ torch = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch-cu128", marker = "sys_platform == 'linux'" }]
 
 [tool.setuptools.package-data]
-lerobot = ["envs/*.json", "annotations/steerable_pipeline/prompts/*.txt"]
+lerobot = [
+    "envs/*.json",
+    "annotations/steerable_pipeline/prompts/*.txt",
+    "assets/piper_description/**/*",
+    "assets/piper_x_description/**/*",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
