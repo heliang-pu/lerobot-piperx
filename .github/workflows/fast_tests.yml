@@ -87,7 +87,7 @@ jobs:
           libusb-1.0-0-dev speech-dispatcher libgeos-dev portaudio19-dev
 
       - name: Setup uv and Python
-        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990  # v8.3.2
+        uses: astral-sh/setup-uv@18d369b23da25a81e9458561248e1aafff6a70fa  # v10.3.1
         with:
           enable-cache: true
           version: ${{ env.UV_VERSION }}
